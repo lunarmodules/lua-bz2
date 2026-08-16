@@ -1,0 +1,57 @@
+package = "@PACKAGE_NAME@"
+version = "@PACKAGE_VERSION@-@PACKAGE_REVISION@"
+
+if ((version:match("^dev")) or (version:match("^scm")) or (version:match("^git"))) then
+   source = {
+      url = [=[@PACKAGE_SOURCE_URL@]=],
+      branch = "@PACKAGE_SOURCE_BRANCH@"
+   }
+else
+   source = {
+      url = [=[@PACKAGE_SOURCE_URL@]=],
+      tag = "@PACKAGE_TAG@"
+   }
+end
+
+description = {
+   summary = "A Lua binding to Julian Seward's libbzip2",
+   detailed = [[
+      Support for reading and writing .bz2 files
+      and handling streams compressed in bzip2 format.
+   ]],
+   homepage = [=[@PACKAGE_HOMEPAGE_URL@]=],
+   license = "ISC"
+}
+external_dependencies = {
+   BZ2 = {
+      library = "bz2"
+   }
+}
+build = {
+   type = "builtin",
+   modules = {
+      ["@PACKAGE_REQUIRE_NAME@"] = {
+         incdirs = {
+            "$(BZ2_INCDIR)"
+         },
+         libdirs = {
+            "$(BZ2_LIBDIR)"
+         },
+         libraries = {
+            "bz2"
+         },
+         defines = {
+            "COMPAT53_PREFIX=compat53",
+         },
+         sources = {
+            "lbz.c",
+            "lbz2_common.c",
+            "lbz2_file_reader.c",
+            "lbz2_file_writer.c",
+            "lbz2_stream.c",
+            "compat-5.3.c",
+         }
+      },
+      ["@PACKAGE_REQUIRE_NAME@.ltn12"] = "@PACKAGE_REQUIRE_NAME@/ltn12.lua",
+   }
+}
