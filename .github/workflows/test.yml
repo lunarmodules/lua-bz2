@@ -12,8 +12,7 @@ on:
     paths-ignore:
       - "*.md"
 
-permissions:
-  contents: read
+permissions: read-all
 
 jobs:
   test:
@@ -49,28 +48,28 @@ jobs:
 
     - name: Restore libbz2 tarball
       id: restore-libbz2
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: bzip2.tar.gz
         key: bzip2
         enableCrossOsArchive: true
 
     - name: Clone libbz2
-      if: ${{ steps.restore-libbz2.outputs.cache-hits != 'true' }}
+      if: steps.restore-libbz2.outputs.cache-hits != 'true'
       run: |
         cd "${{ runner.temp }}"
         git clone --branch=${{ env.BZ2_BRANCH }} --single-branch https://gitlab.com/bzip2/bzip2.git
 
     - name: Generate a libbz2 tarball from the source in the workspace
-      if: ${{ steps.restore-libbz2.outputs.cache-hits != 'true' }}
+      if: steps.restore-libbz2.outputs.cache-hits != 'true'
       run: |
         cd "${{ runner.temp }}"
         cd bzip2
         git archive "--format=tar.gz" -o "${{ github.workspace }}/bzip2.tar.gz" "--prefix=bzip2/" ${{ env.BZ2_REF }}
 
     - name: Save libbz2 tarball
-      if: ${{ steps.restore-libbz2.outputs.cache-hits != 'true' }}
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 #v6.1.0
+      if: steps.restore-libbz2.outputs.cache-hits != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: bzip2.tar.gz
         key: bzip2
@@ -80,7 +79,7 @@ jobs:
       run: tar -xf "bzip2.tar.gz"
 
     - name: Configure libbz2 (Unix)
-      if: ${{ runner.os != 'Windows' }}
+      if: runner.os != 'Windows'
       run: |
         cmake \
           -G "Unix Makefiles" \
@@ -93,7 +92,7 @@ jobs:
           -B build
 
     - name: Configure libbz2 (Windows)
-      if: ${{ runner.os == 'Windows' }}
+      if: runner.os == 'Windows'
       shell: cmd
       run: |
         IF "${{ matrix.luaVersion }}" EQU "luajit" (
@@ -118,19 +117,19 @@ jobs:
       run: cmake --build build --config Release
 
     - name: Install libbz2 (Unix)
-      if: ${{ runner.os != 'Windows' }}
+      if: runner.os != 'Windows'
       run: sudo cmake --install build --config Release
 
     - name: Install libbz2 (Windows)
-      if: ${{ runner.os == 'Windows' }}
+      if: runner.os == 'Windows'
       run: cmake --install build --config Release
 
     - name: Fix libbz2 install_name (macOS)
-      if: ${{ runner.os == 'macOS' }}
+      if: runner.os == 'macOS'
       run: sudo install_name_tool -id /usr/local/lib/libbz2.dylib /usr/local/lib/libbz2.dylib
 
     - name: Copy the static library of libbz2 to the correct location (Windows)
-      if: ${{ runner.os == 'Windows' }}
+      if: runner.os == 'Windows'
       shell: cmd
       run: |
         IF "${{ matrix.luaVersion }}" EQU "luajit" (
