@@ -159,8 +159,14 @@ jobs:
     - name: Install LuaRocks
       uses: luarocks/gh-actions-luarocks@95d2308a0aff36ad31ebadca493ed14853399842 # v7
 
+    - name: Install dependencies to run tests
+      run: luarocks install luasocket
+
     - name: Build
       run: luarocks make
 
     - name: Test
       run: lua test.lua
+
+    - name: Test ltn12
+      run: lua ltn12-test.lua
