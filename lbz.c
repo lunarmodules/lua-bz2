@@ -19,6 +19,9 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+/* The version of this module */
+#define LBZ2_VERSION "0.2.3"
+
 /* This explicit define prevents compat-5.3.h from loading compat-5.3.c */
 #define COMPAT53_PREFIX compat53
 #include "compat-5.3.h"
@@ -36,7 +39,7 @@ int luaopen_bz2(lua_State *L) {
 
 	lua_pushliteral(L, "bz2");
 	lua_setfield(L, -2, "_NAME");
-	lua_pushliteral(L, "0.1");
+	lua_pushliteral(L, LBZ2_VERSION);
 	lua_setfield(L, -2, "_VERSION");
 
 	register_lbz2_file_reader(L);
