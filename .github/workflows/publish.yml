@@ -1,0 +1,260 @@
+name: Publish
+
+#
+# Steps required to publish:
+#
+# 1. Go to GitHub Web to trigger this workflow manually;
+# 2. Select the latest tag in the UI;
+# 3. Push the button to run this workflow for the selected tag.
+#
+
+on: workflow_dispatch
+
+jobs:
+  # Job to extract the library version
+  # defined in the LBZ2_VERSION macro
+  # on `lbz.c` file.
+  #
+  # Remark: this job stores `none`
+  # as version output on failure.
+  get-version-from-library:
+    name: Get the library version
+    runs-on: ubuntu-latest
+    permissions: read-all
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Get version from the library defined at `lbz.c`
+        id: version
+        run: |
+          pattern="[0-9]+(\\.[0-9]+)+"
+          version=$(grep -oP "#define\\s+LBZ2_VERSION\\s+\"($pattern)\"" lbz.c | grep -oP "$pattern")
+          if [[ $version =~ ^$pattern$ ]]; then
+            echo "version=${version}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=none" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Job to get the latest
+  # versioned rockspec
+  # tracked by git
+  # on rockspec folder.
+  #
+  # Remark: this job stores `none`
+  # as rockspec output on failure.
+  get-latest-rockspec:
+    name: Get the latest rockspec
+    runs-on: ubuntu-latest
+    permissions: read-all
+
+    outputs:
+      rockspec: ${{ steps.rockspec.outputs.rockspec }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Get the latest rockspec sorted by version in the name
+        id: rockspec
+        run: |
+          dev_pattern="lua-bz2-(dev|scm|cvs|git|svn|hg)-[0-9]+\\.rockspec"
+          latest=""
+          for rockspec in $(git ls-files "rockspecs/lua-bz2-*.rockspec" | sort --version-sort); do
+            rockspec_basename="$(basename "$rockspec")"
+
+            if ! [[ $rockspec_basename =~ ^$dev_pattern$ ]]; then
+              latest="${rockspec}"
+            fi
+          done
+
+          if test -f "${latest}"; then
+            echo "rockspec=${latest}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rockspec=none" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Job to extract the version
+  # from the tag.
+  # For instance, for a `v0.0.1`
+  # tag, this job stores `0.0.1`
+  # as version output.
+  #
+  # Remark: this job stores `none`
+  # as version output on failure.
+  get-version-from-tag:
+    name: Get version from the tag
+    runs-on: ubuntu-latest
+    permissions: read-all
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+    steps:
+
+      - name: Extract version from the tag
+        id: version
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            pattern="[0-9]+(\\.[0-9]+)+"
+            version=$(echo "${{ github.ref_name }}" | sed -e "s|v||g" | grep -oP "^$pattern\$")
+
+            if [[ $version =~ ^$pattern$ ]]; then
+              echo "version=${version}" >> "$GITHUB_OUTPUT"
+            else
+              echo "version=none" >> "$GITHUB_OUTPUT"
+            fi
+          else
+            echo "version=none" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Job to perform validation
+  # between different versions:
+  #
+  # i)   from the `lbz.c` file;
+  # ii)  from the latest rockspec name;
+  # iii) from the `source.tag` field
+  #      in the latest rockspec.
+  match-versions:
+    name: Match versions from lib, rockspec and tag
+    runs-on: ubuntu-latest
+    permissions: read-all
+    needs:
+      - get-version-from-library
+      - get-latest-rockspec
+      - get-version-from-tag
+    if: |
+      ${{
+        needs.get-version-from-library.outputs.version != 'none' &&
+        needs.get-latest-rockspec.outputs.rockspec != 'none' &&
+        needs.get-version-from-tag.outputs.version != 'none' &&
+        needs.get-version-from-library.outputs.version == needs.get-version-from-tag.outputs.version
+      }}
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+          persist-credentials: false
+
+      - name: Install Lua
+        uses: luarocks/gh-actions-lua@85e2287697275df96334743ac654241a8fd34ab3 # v13
+
+      - name: Install LuaRocks
+        uses: luarocks/gh-actions-luarocks@95d2308a0aff36ad31ebadca493ed14853399842 # v7
+
+      - name: Validate rockspec basename
+        run: |
+          rockspec_basename="$(basename "${{ needs.get-latest-rockspec.outputs.rockspec }}")"
+          rockspec_basename_version=$(echo "${rockspec_basename}" | rev | cut -d- -f2 | rev)
+          if [ "${rockspec_basename_version}" != "${{ needs.get-version-from-library.outputs.version }}" ]; then
+            echo "version in the basename of the latest rockspec (${rockspec_basename_version}) is not ${{ needs.get-version-from-library.outputs.version }}";
+            exit 1;
+          fi
+
+      - name: Validate rockspec tag
+        run: |
+          rockspec_tag=$(lua -e "dofile(arg[0]); io.write(source.tag);" -- "${{ needs.get-latest-rockspec.outputs.rockspec }}")
+          if [ "${rockspec_tag}" != "${{ github.ref_name }}" ]; then
+            echo "source.tag (${rockspec_tag}) is not ${{ github.ref_name }}";
+            exit 1;
+          fi
+
+  publish:
+    name: Publish to LuaRocks and GitHub Releases
+    runs-on: ubuntu-latest
+    needs:
+      - get-latest-rockspec
+      - get-version-from-tag
+      - match-versions
+    if: |
+      ${{
+        github.repository == 'lunarmodules/lua-bz2' &&
+        github.ref_type == 'tag'
+      }}
+    permissions:
+      contents: write
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.ref }}
+
+      - name: Install Lua
+        uses: luarocks/gh-actions-lua@85e2287697275df96334743ac654241a8fd34ab3 # v13
+
+      - name: Install LuaRocks
+        uses: luarocks/gh-actions-luarocks@95d2308a0aff36ad31ebadca493ed14853399842 # v7
+
+      - name: Install build dependencies for lua-bz2
+        run: sudo apt install -y libbz2-dev
+
+      - name: Install system dependencies
+        run: sudo apt install -y libssl-dev
+
+      - name: Install upload dependency (LuaSocket)
+        run: luarocks install luasocket
+
+      - name: Install upload dependency (LuaSec)
+        run: luarocks install luasec
+
+      - name: Install upload dependency (dkjson)
+        run: luarocks install dkjson
+
+      - name: Pack a src rock and set an environment variable to hold its name
+        run: |
+          rockspec_basename="$(basename "${{ needs.get-latest-rockspec.outputs.rockspec }}")"
+          srcrock="${rockspec_basename%.*}.src.rock"
+          luarocks pack "${{ needs.get-latest-rockspec.outputs.rockspec }}" || {
+            echo "Failed to pack a .src.rock from ${{ needs.get-latest-rockspec.outputs.rockspec }}"
+            exit 1
+          }
+
+          echo "SRC_ROCK=${srcrock}" >> "$GITHUB_ENV"
+
+      - name: Generate a versioned tarball from the tag
+        run: |
+          git archive \
+            --format=tar.gz \
+            -o lua-bz2-${{ needs.get-version-from-tag.outputs.version }}.tar.gz \
+            --prefix=lua-bz2-${{ needs.get-version-from-tag.outputs.version }}/ \
+            ${{ github.ref }}
+
+      - name: Generate a versioned zip from the tag
+        run: |
+          git archive \
+            --format=zip \
+            -o lua-bz2-${{ needs.get-version-from-tag.outputs.version }}.zip \
+            --prefix=lua-bz2-${{ needs.get-version-from-tag.outputs.version }}/ \
+            ${{ github.ref }}
+
+      - name: Publish to LuaRocks
+        env:
+          UPLOAD_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+        run: luarocks upload "${{ needs.get-latest-rockspec.outputs.rockspec }}" "--temp-key=$UPLOAD_KEY"
+
+      - name: Publish to GitHub Releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ github.ref_name }}" \
+            "lua-bz2-${{ needs.get-version-from-tag.outputs.version }}.tar.gz" \
+            "lua-bz2-${{ needs.get-version-from-tag.outputs.version }}.zip" \
+            "${{ needs.get-latest-rockspec.outputs.rockspec }}" \
+            "${{ env.SRC_ROCK }}"
