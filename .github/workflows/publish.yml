@@ -1,11 +1,9 @@
 name: Publish
 
 #
-# Steps required to publish:
-#
-# 1. Go to GitHub Web to trigger this workflow manually;
-# 2. Select the latest tag in the UI;
-# 3. Push the button to run this workflow for the selected tag.
+# Read the document (`RELEASES.md`)
+# to perform all the steps required
+# to run this workflow.
 #
 
 on: workflow_dispatch
