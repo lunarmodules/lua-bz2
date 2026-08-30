@@ -244,7 +244,7 @@ jobs:
 
       - name: Publish to LuaRocks
         env:
-          UPLOAD_KEY: ${{ secrets.LUAROCKS_API_KEY }}
+          UPLOAD_KEY: ${{ secrets.LUAROCKS_APIKEY }}
         run: luarocks upload "${{ needs.get-latest-rockspec.outputs.rockspec }}" "--temp-key=$UPLOAD_KEY"
 
       - name: Publish to GitHub Releases
